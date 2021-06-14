@@ -14,7 +14,7 @@ DESC="Vault secret management tool"
 NAME=vault
 DAEMON="{{ vault_bin_path }}/$NAME"
 PIDFILE=/var/run/$NAME/$NAME.pid
-DAEMON_ARGS="server -config={{ vault_main_config }} -log-level={{ vault_log_level | lower }}"
+DAEMON_ARGS="server -config={{ vault_config_path if vault_use_config_path else vault_main_config }} -log-level={{ vault_log_level | lower }} {{ vault_exec_output }}"
 USER={{ vault_user }}
 SCRIPTNAME=/etc/init.d/$NAME
 
@@ -32,11 +32,20 @@ mkrundir() {
 }
 
 do_start() {
+    {% if vault_http_proxy -%}
+    export HTTP_PROXY={{ vault_http_proxy }}
+    {% endif -%}
+    {% if vault_https_proxy -%}
+    export HTTPS_PROXY={{ vault_https_proxy }}
+    {% endif -%}
+    {% if vault_no_proxy -%}
+    export NO_PROXY={{ vault_no_proxy }}
+    {% endif -%}
     mkrundir
     start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --chuid $USER --background --make-pidfile --test > /dev/null \
         || return 1
-    start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --chuid $USER --background --make-pidfile -- \
-        $DAEMON_ARGS \
+    start-stop-daemon --start --quiet --pidfile $PIDFILE --chuid $USER --background --make-pidfile --background \
+        --startas /bin/bash -- -c "exec $DAEMON $DAEMON_ARGS" \
         || return 2
 
     RETVAL=0

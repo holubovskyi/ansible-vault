@@ -1,30 +1,42 @@
  # Vault
-
-[![Build Status](https://travis-ci.org/brianshumate/ansible-vault.svg?branch=master)](https://travis-ci.org/brianshumate/ansible-vault)
-[![Ansible Galaxy](https://img.shields.io/badge/galaxy-brianshumate.vault-blue.svg)](https://galaxy.ansible.com/brianshumate/vault/)
-[![Percentage of issues still open](http://isitmaintained.com/badge/open/brianshumate/ansible-vault.svg)](http://isitmaintained.com/project/brianshumate/ansible-vault "Percentage of issues still open")
+[![Build Status](https://travis-ci.org/ansible-community/ansible-vault.svg?branch=master)](https://travis-ci.org/ansible-community/ansible-vault)
+[![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/ansible-community/ansible-vault.svg)](http://isitmaintained.com/project/ansible-community/ansible-vault "Average time to resolve an issue")
+[![Percentage of issues still open](http://isitmaintained.com/badge/open/ansible-community/ansible-vault.svg)](http://isitmaintained.com/project/ansible-community/ansible-vault "Percentage of issues still open")
 
 This Ansible role performs a basic [Vault](https://vaultproject.io/)
 installation, including filesystem structure and example configuration.
 
 It can also bootstrap a minimal development or evaluation server or HA
 Consul-backed cluster in a Vagrant and VirtualBox based environment. See
-[README_VAGRANT.md](https://github.com/brianshumate/ansible-vault/blob/master/examples/README_VAGRANT.md) and the associated [Vagrantfile](https://github.com/brianshumate/ansible-vault/blob/master/examples/Vagrantfile) for more details about the developer mode setup.
+[README_VAGRANT.md](https://github.com/ansible-community/ansible-vault/blob/master/examples/README_VAGRANT.md) and the associated [Vagrantfile](https://github.com/ansible-community/ansible-vault/blob/master/examples/Vagrantfile) for more details about the developer mode setup.
+
+## Installation
+Brian Shumates transferred this role to @ansible-community/hashicorp-tools. This role resides on GitHub pending fixing the integration with Ansible Galaxy. To install this role create a `roles/requirements.yml` file in your Ansible project folder with the following contents:
+
+```yaml
+- src: https://github.com/ansible-community/ansible-vault.git
+  name: ansible-community.ansible-vault
+  scm: git
+  version: master
+```
+
+You can use git tag in the version attribute. Also you can honor its legacy `name: brianshumate.ansible-vault`.
 
 ## Requirements
 
-This role requires FreeBSD, or a Debian or RHEL based Linux distribution. It
+This role requires Archlinux, or FreeBSD, or a Debian or RHEL based Linux distribution. It
 might work with other software versions, but does work with the following
 specific software and versions:
 
 * Ansible: 2.8.4
-* Vault: 1.3.2
+* Vault: 1.4.0 and above
 * Debian
   - Debian 10 (buster)
   - Debian 9 (stretch)
   - Debian 8 (jessie)
 * FreeBSD 11
-* Ubuntu 18.04
+* Ubuntu 18.04, 20.04
+* ArchLinux
 
 Sorry, there is no planned support at the moment for Windows.
 
@@ -32,14 +44,27 @@ Sorry, there is no planned support at the moment for Windows.
 
 The role defines variables in `defaults/main.yml`:
 
+### vault_listener_localhost_enable
+
+ - Set this to true if you enable listen vault on localhost
+ - Default value: *false*
+
+### vault_privileged_install
+
+ - Set this to true if you see permission errors when the vault files are
+   downloaded and unpacked locally. This issue can show up if the role has
+   been downloaded by one user (like root), and the installation is done
+   with a different user.
+ - Default value: *false*
+
 ### `vault_version`
 
-- version to install
+- Version to install
   - Can be overridden with `VAULT_VERSION` environment variable
   - Will include "+prem" if vault_enterprise_premium=True
   - Will include ".hsm" if vault_enterprise_premium_hsm=True
 
-- Default value: 1.3.2
+- Default value: 1.5.5
 
 ### `vault_enterprise`
 
@@ -71,6 +96,11 @@ The role defines variables in `defaults/main.yml`:
 - Override this var if you have your sha file is hosted internally
 - Default value: `"https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version}}_SHA256SUMS"`
 
+### `vault_install_hashi_repo`
+
+- Set this to `true` when installing Vault via HashiCorp Linux repository
+- Default value: *false*
+
 ### `vault_shasums`
 
 - SHA summaries filename (included for convenience not for modification)
@@ -92,6 +122,11 @@ The role defines variables in `defaults/main.yml`:
 - Configuration file path
 - Default value: `/etc/vault.d`
 
+### `vault_use_config_path`
+
+- Use `"{{ vault_config_path }}"` to configure vault instead of `"{{ vault_main_config }}"`
+- default vaule: *false*
+
 ### `vault_plugin_path`
 
 - Path from where plugins can be loaded
@@ -104,7 +139,7 @@ The role defines variables in `defaults/main.yml`:
 
 ### `vault_log_path`
 
-- Log path - (not yet implemented)
+- Log path
 - Default value: `/var/log/vault`
 
 ### `vault_run_path`
@@ -126,6 +161,11 @@ The role defines variables in `defaults/main.yml`:
 
 - OS group name
 - Default value: bin
+
+### `vault_groups`
+
+- OS additional groups as in ansibles user module
+- Default value: null
 
 ### `vault_manage_group`
 
@@ -152,11 +192,42 @@ The role defines variables in `defaults/main.yml`:
 - Enable vault web UI
 - Default value:  true
 
+## TCP Listener Variables
+
+### `vault_tcp_listeners`
+
+- A list of tcp listeners. Each listener can define any of the listener specific variables described in further detail below.
+- Default value:
+```yaml
+vault_tcp_listeners:
+  - vault_address: '{{ vault_address }}'
+    vault_port: '{{ vault_port }}'
+    vault_cluster_address: '{{ vault_cluster_address }}'
+    # vault_proxy_protocol_behavior: '{{ vault_proxy_protocol_behavior }}'
+    # vault_proxy_protocol_authorized_addrs: '{{ vault_proxy_protocol_authorized_addrs }}'
+    vault_tls_disable: '{{ vault_tls_disable }}'
+    vault_tls_config_path: '{{ vault_tls_config_path }}'
+    vault_tls_cert_file: '{{ vault_tls_cert_file }}'
+    vault_tls_key_file: '{{ vault_tls_key_file }}'
+    vault_tls_ca_file: '{{ vault_tls_ca_file }}'
+    vault_tls_min_version: '{{ vault_tls_min_version }}'
+    vault_tls_cipher_suites: '{{ vault_tls_cipher_suites }}'
+    vault_tls_prefer_server_cipher_suites: '{{ vault_tls_prefer_server_cipher_suites }}'
+    vault_tls_require_and_verify_client_cert: '{{ vault_tls_require_and_verify_client_cert }}'
+    vault_tls_disable_client_certs: '{{ vault_tls_disable_client_certs }}'
+    # vault_x_forwarded_for_authorized_addrs: '{{ vault_x_forwarded_for_authorized_addrs }}'
+    # vault_x_forwarded_for_hop_skips: '{{ vault_x_forwarded_for_hop_skips }}'
+    # vault_x_forwarded_for_reject_not_authorized: '{{ vault_x_forwarded_for_reject_not_authorized }}'
+    # vault_x_forwarded_for_reject_not_present: '{{ vault_x_forwarded_for_reject_not_present }}'
+```
+
 ## Storage Backend Variables
 
 ### `vault_backend`
-- Which storage backend should be selected, choices are: consul, etcd, file, s3, and dynamodb
-- Default value: consul
+
+- Which storage backend should be selected, choices are: raft, consul, etcd, file, s3, and dynamodb
+- Default value: raft
+
 
 ### `vault_backend_tls_src_files`
 
@@ -182,6 +253,48 @@ The role defines variables in `defaults/main.yml`:
 
 - CA certificate used for backend communication (if supported). This defaults to system bundle if not specified.
 - {{ vault_tls_ca_file }}
+
+### Raft Storage Backend
+
+#### `vault_raft_group_name`
+
+- Inventory group name of servers hosting the raft backend
+- Default value: vault_raft_servers
+
+#### `vault_raft_data_path`
+
+- Data path for Raft
+- Default value: vault_data_path
+
+#### `vault_raft_node_id`
+
+- Node_id for Raft
+- Default value: inventory_hostname_short
+
+#### `vault_raft_performance_multiplier`
+
+- Performance multiplier for Raft
+- Default value: none
+
+#### `vault_raft_trailing_logs`
+
+- Logs entries count left on log store after snapshot
+- Default value: none
+
+#### `vault_raft_snapshot_threshold`
+
+- Minimum Raft commit entries between snapshots
+- Default value: none
+
+#### `vault_raft_max_entry_size`
+
+- Maximum number of bytes for a Raft entry
+- Default value: none
+
+#### `vault_raft_autopilot_reconcile_interval`
+
+- Interval after which autopilot will pick up any state changes
+- Default value: none
 
 ### Consul Storage Backend
 
@@ -218,57 +331,57 @@ The role defines variables in `defaults/main.yml`:
 
 ### etcd Storage Backend
 
-#### vault_etcd
+#### `vault_etcd`
 
 - Address of etcd storage
 - Default value: 127.0.0.1:2379
 
-#### vault_etcd_api:
+#### `vault_etcd_api`
 
 - API version
 - Default value: v3
 
-#### vault_etcd_path
+#### `vault_etcd_path`
 
 - Path for Vault storage
 - Default value: /vault/
 
-#### vault_etcd_discovery_srv
+#### `vault_etcd_discovery_srv`
 
 - Discovery server
 - Default value: none
 
-#### vault_etcd_discovery_srv_name
+#### `vault_etcd_discovery_srv_name`
 
 - Discovery server name
 - Default value: none
 
-#### vault_etcd_ha_enabled
+#### `vault_etcd_ha_enabled`
 
 - Use storage for High Availability mode
 - Default value: false
 
-#### vault_etcd_sync
+#### `vault_etcd_sync`
 
 - Use etcdsync
 - Default value: true
 
-#### vault_etcd_username
+#### `vault_etcd_username`
 
 - Username
 - Default value: none
 
-#### vault_etcd_password
+#### `vault_etcd_password`
 
 - Password
 - Default value: none
 
-#### vault_etcd_request_timeout
+#### `vault_etcd_request_timeout`
 
--Request timeout
+- Request timeout
 - Default value: "5s"
 
-#### vault_etcd_lock_timeout
+#### `vault_etcd_lock_timeout`
 
 - Lock timeout
 - Default value: "15s"
@@ -279,6 +392,58 @@ The role defines variables in `defaults/main.yml`:
 
 - Backend file template filename
 - Default value: `backend_file.j2`
+
+### Raft Integrated Storage Backend
+
+#### `vault_backend_raft`
+
+- Backend raft integrated storage template filename
+- Default value: `vault_backend_raft.j2`
+
+#### `vault_raft_node_id`
+
+- Identifier for the node in the integrated storage Raft cluster
+- Default value: "raft_node_1"
+
+#### `vault_raft_retry_join`
+
+- Details of all the nodes are known beforehand
+- Default value: "[]"
+
+##### `leader_api_addr`
+
+- Address of a possible leader node.
+- Default value: ""
+
+##### `leader_ca_cert_file`
+
+- File path to the CA cert of the possible leader node.
+- Default value: ""
+
+##### `leader_client_cert_file`
+
+- File path to the client certificate for the follower node to establish client authentication with the possible leader node.
+- Default value: ""
+
+##### `leader_client_key_file`
+
+- File path to the client key for the follower node to establish client authentication with the possible leader node.
+- Default value: ""
+
+##### `leader_ca_cert`
+
+- CA cert of the possible leader node.
+- Default value: ""
+
+##### `leader_client_cert`
+
+- Client certificate for the follower node to establish client authentication with the possible leader node.
+- Default value: ""
+
+##### `leader_client_key`
+
+- Client key for the follower node to establish client authentication with the possible leader node.
+- Default value: ""
 
 ### DynamoDB Storage Backend
 
@@ -393,6 +558,121 @@ for the DynamoDB storage backend.
 - Path to SA GCP credential on Vault server.
 - Default value: `{{ vault_home }}/{{ vault_gcs_credentials_src_file | basename}}"`
 
+### Consul Service Registration
+
+For additional information on the various options, see the
+[Vault documentation](https://www.vaultproject.io/docs/configuration/service-registration/consul)
+for Consul service registration. Note that this is only available
+starting at Vault version 1.4.
+
+#### `vault_service_registration_consul_enable`
+
+- Enable Consul service registration
+- Default value: false
+
+#### `vault_service_registration_consul_template`
+
+- Consul service registration template filename
+- Default value: `service_registration_consul.hcl.j2`
+
+#### `vault_service_registration_consul_address`
+
+- host:port value for connecting to Consul service registration
+- Default value: 127.0.0.1:8500
+
+#### `vault_service_registration_check_timeout`
+
+- Specifies the check interval used to send health check information back to Consul.
+- Default value: 5s
+
+#### `vault_service_registration_disable_registration`
+
+- Specifies whether Vault should register itself with Consul.
+- Default value: false
+
+#### `vault_service_registration_consul_scheme`
+
+- Scheme for Consul service registration
+- Supported values: http, https
+- Default value: http
+
+#### `vault_service_registration_consul_service`
+
+- Name of the Vault service to register in Consul
+- Default value: vault
+
+#### `vault_service_registration_consul_service_tags`
+
+- Specifies a comma-separated list of tags to attach to the service registration in Consul.
+- Default value: ""
+
+#### `vault_service_registration_consul_service_address`
+
+- Specifies a service-specific address to set on the service registration in Consul.
+- Default value: nil
+
+#### `vault_service_registration_consul_token`
+
+- ACL token for registering with Consul service registration
+- Default value: none
+
+#### `vault_service_registration_consul_tls_config_path`
+
+- Path to TLS certificate and key
+- Default value `{{ vault_tls_config_path }}`
+
+#### `vault_service_registration_consul_tls_ca_file`
+
+- CA certificate filename
+- Default value: `{{ vault_tls_ca_file }}`
+
+#### `vault_service_registration_consul_tls_cert_file`
+
+- Server certificate
+- Default value: `{{ vault_tls_cert_file }}`
+
+#### `vault_service_registration_consul_tls_key_file`
+
+- Server key
+- Default value: `{{ vault_tls_key_file }}`
+
+#### `vault_service_registration_consul_tls_min_version`
+
+- [Minimum acceptable TLS version](https://www.vaultproject.io/docs/configuration/listener/tcp.html#tls_min_version)
+- Default value: `{{ vault_tls_min_version }}`
+
+#### `vault_service_registration_consul_tls_skip_verify`
+
+- Disable verification of TLS certificates. Using this option is highly discouraged.
+- Default value: false
+
+### Kubernetes Service Registration
+
+For additional information on the various options, see the
+[Vault documentation](https://www.vaultproject.io/docs/configuration/service-registration/kubernetes)
+for Kubernetes service registration. Note that this is only
+available starting at Vault version 1.4.
+
+#### `vault_service_registration_kubernetes_consul_enable`
+
+- Enable Kubernetes service registration
+- Default value: false
+
+#### `vault_service_registration_kubernetes_template`
+
+- Kubernetes service registration template filename
+- Default value: `service_registration_kubernetes.hcl.j2`
+
+#### `vault_service_registration_kubernetes_namespace`
+
+- Kubernetes namespace to register
+- Default value: vault
+
+#### `vault_service_registration_pod_name`
+
+- Kubernetes pod name to register
+- Default value: vault
+
 ### `vault_log_level`
 
 - [Log level](https://www.consul.io/docs/agent/options.html#_log_level)
@@ -427,7 +707,6 @@ for the DynamoDB storage backend.
 - Default value: 768h (32 days)
 
 ### `vault_main_config`
-
 - Main configuration file name (full path)
 - Default value: `"{{ vault_config_path }}/vault_main.hcl"`
 
@@ -435,6 +714,21 @@ for the DynamoDB storage backend.
 
 - Vault main configuration template file
 - Default value: *vault_main_configuration.hcl.j2*
+
+### `vault_http_proxy`
+
+- Address to be used as the proxy for HTTP and HTTPS requests unless overridden by `vault_https_proxy` or `vault_no_proxy`
+- Default value: `""`
+
+### `vault_https_proxy`
+
+- Address to be used as the proxy for HTTPS requests unless overridden by `vault_no_proxy`
+- Default value: `""`
+
+### `vault_no_proxy`
+
+- Comma separated values which specify hosts that should be exluded from proxying.  Follows [golang conventions](https://godoc.org/golang.org/x/net/http/httpproxy)
+- Default value: `""`
 
 ### `vault_cluster_address`
 
@@ -462,6 +756,15 @@ for the DynamoDB storage backend.
 - Disable Certificate Validation for API reachability check
 - Default value: true
 
+### `vault_proxy_protocol_behavior`
+
+- May be one of `use_always`, `allow_authorized`, or `deny_unauthorized`
+- Enables [PROXY protocol](https://www.vaultproject.io/docs/configuration/listener/tcp#proxy_protocol_behavior) for listener.
+- If enabled and set to something other than `use_always`, you must also set
+  - [*vault_proxy_protocol_authorized_addrs*](https://www.vaultproject.io/docs/configuration/listener/tcp#proxy_protocol_authorized_addrs)
+  - Comma-separated list of source IPs for which PROXY protocol information will be used.
+- Default value: ""
+
 ### `vault_tls_config_path`
 
 - Path to TLS certificate and key
@@ -483,11 +786,6 @@ for the DynamoDB storage backend.
 - User-specified source directory for TLS files
   - Override with `VAULT_TLS_SRC_FILES` environment variable
 - Default value: `{{ role_path }}/files`
-
-### `vault_tls_config_path`
-
-- Path to TLS certificate and key
-- Default value `/etc/vault/tls`
 
 ### `vault_tls_ca_file`
 
@@ -544,6 +842,16 @@ for the DynamoDB storage backend.
 - Copy from remote source if TLS files are already on host
 - Default value: false
 
+### `vault_x_forwarded_for_authorized_addrs`
+
+- Comma-separated list of source IP CIDRs for which an X-Forwarded-For header will be trusted.
+- Enables [X-Forwarded-For support.](https://www.vaultproject.io/docs/configuration/listener/tcp#x_forwarded_for_authorized_addrs)
+- If enabled, you may also set any of the following parameters:
+  - *vault_x_forwarded_for_hop_skips* with a format of "N" for the number of hops to skip
+  - *vault_x_forwarded_for_reject_not_authorized* with true/false
+  - *vault_x_forwarded_for_reject_not_present* with true/false
+- Default value: ""
+
 ### `vault_bsdinit_template`
 - BSD init template file
 - Default value: `vault_service_bsd_init.j2`
@@ -560,11 +868,23 @@ for the DynamoDB storage backend.
 - Systemd service template file
 - Default value: `vault_service_systemd.j2`
 
+### `vault_systemd_service_name`
+- Systemd service unit name
+- Default value: "vault"
+
 ### `vault_telemetry_enabled`
 - Enable [Vault telemetry](https://www.vaultproject.io/docs/configuration/telemetry.html)
-- If enabled, you must set *vault_statsite_address* or *vault_statsd_address* with a format of "FQDN:PORT"
+- If enabled, you must set at least one of the following parameters according to your telemetry provider:
+  - *vault_statsite_address* with a format of "FQDN:PORT"
+  - *vault_statsd_address* with a format of "FQDN:PORT"
+  - *vault_prometheus_retention_time* e.g: "30s" or "24h"
 - If enabled, optionally set *vault_telemetry_disable_hostname* to strip the hostname prefix from telemetry data
 - Default value: *false*
+
+### `vault_unauthenticated_metrics_access`
+
+- Configure [unauthenticated metrics access](https://www.vaultproject.io/docs/configuration/listener/tcp#configuring-unauthenticated-metrics-access)
+- Default value: false
 
 ## OS Distribution Variables
 
@@ -643,6 +963,11 @@ differences across distributions:
 
 - Vault package SHA256 summary
 - Default value: SHA256 summary
+
+### `vault_enable_log`
+
+- Enable log to `vault_log_path`
+- Default value: false
 
 ### `vault_enable_logrotate`
 

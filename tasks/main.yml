@@ -17,6 +17,7 @@
     name: "{{ vault_user }}"
     comment: "Vault user"
     group: "{{ vault_group }}"
+    groups: "{{ vault_groups }}"
     system: true
   when: vault_manage_user | bool
 
@@ -31,13 +32,15 @@
         - vars
 
 - name: Check Vault installation
-  command: command -v vault
+  shell: command -v vault
   environment:
     PATH: "{{ vault_bin_path }}:{{ ansible_env.PATH }}"
   register: vault_installation
   changed_when: false
   ignore_errors: true
   check_mode: false
+  tags:
+    - skip_ansible_lint  # command is a shell builtin
 
 - name: Get installed Vault version
   shell: |
@@ -54,16 +57,36 @@
   set_fact:
     installation_required: "{{ vault_installation is failed or installed_vault_version.stdout != vault_version }}"
 
+- name: Install OS packages and Vault Enterprise via control host
+  include: install_enterprise.yml
+  when:
+    - vault_enterprise | bool
+    - not vault_install_remotely | bool
+    - not vault_install_remote_repo | bool
+    - installation_required | bool
+
 - name: Install OS packages and Vault via control host
   include: install.yml
   when:
+    - not vault_enterprise | bool
     - not vault_install_remotely | bool
+    - not vault_install_hashi_repo | bool
+    - installation_required | bool
+
+- name: Install Vault via HashiCorp repository
+  include: install_hashi_repo.yml
+  when:
+    - not vault_enterprise | bool
+    - not vault_install_remotely | bool
+    - vault_install_hashi_repo | bool
     - installation_required | bool
 
 - name: Install OS packages and Vault via remote hosts
   include: install_remote.yml
   when:
+    - not vault_enterprise | bool
     - vault_install_remotely | bool
+    - not vault_install_hashi_repo | bool
     - installation_required | bool
 
 - name: Check Vault mlock capability
@@ -85,6 +108,7 @@
     state: directory
     owner: "{{ vault_user }}"
     group: "{{ vault_group }}"
+    mode: 0750
   with_items:
     - "{{ vault_config_path }}"
     - "{{ vault_plugin_path }}"
@@ -93,6 +117,7 @@
     - "{{ vault_run_path }}"
 
 - name: Enable logrotate for vault
+  become: true
   template:
     src: "{{ vault_logrotate_template }}"
     dest: /etc/logrotate.d/vault
@@ -116,7 +141,7 @@
     owner: "{{ vault_user }}"
     group: "{{ vault_group }}"
     mode: "0600"
-  when: vault_gkms | bool
+  when: vault_gkms_credentials_src_file | length | bool
 
 - name: "Copy GCP Credentials for gcs backend"
   copy:
@@ -137,8 +162,37 @@
     owner: "{{ vault_user }}"
     group: "{{ vault_group }}"
     mode: "0400"
+    backup: "{{ vault_backup_config | default('false') | bool | lower }}"
   notify: Restart vault
 
+- name: Vault awskms seal configuration
+  become: true
+  template:
+    src: "{{ vault_awskms_backend }}"
+    dest: "{{ vault_awskms_config }}"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: "0400"
+    backup: "{{ vault_backup_config | default('false') | bool | lower }}"
+  when: vault_awskms | bool
+  notify: Restart vault
+
+- name: Vault azurekeyvault seal configuration
+  become: true
+  template:
+    src: "{{ vault_azurekeyvault_backend }}"
+    dest: "{{ vault_azurekeyvault_config }}"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: "0400"
+    backup: "{{ vault_backup_config | default('false') | bool | lower }}"
+  when: vault_azurekeyvault | bool
+  notify: Restart vault
+
+- name: "Set Exec output to log path when enabled log"
+  set_fact:
+    vault_exec_output: ">> {{ vault_log_path }}/vault.log 2>&1"
+  when: vault_enable_log
 
 - name: BSD init script
   template:
@@ -194,8 +248,8 @@
   become: true
   template:
     src: "{{ vault_systemd_template }}"
-    dest: /lib/systemd/system/vault.service
-    force: yes
+    dest: "/lib/systemd/system/{{ vault_systemd_service_name }}.service"
+    force: true
     owner: root
     group: root
     mode: "0644"
@@ -210,6 +264,7 @@
   become: true
   systemd:
     daemon-reload: true
+  notify: Restart Vault
   when:
     - ansible_service_mgr == "systemd"
     - not ansible_os_family == "FreeBSD"
@@ -220,26 +275,40 @@
 - name: Start Vault
   become: true
   service:
-    name: vault
+    name: '{{ vault_systemd_service_name }}'
     state: started
     enabled: true
 
 - name: Restart Vault if needed
   meta: flush_handlers
 
+- name: Compute TLS friendly vault_addr
+  set_fact:
+    vault_addr: "{{ (vault_address == '0.0.0.0') | ternary('127.0.0.1', vault_address) }}"
+
 - name: Insert http(s) export in dotfile
+  become: true
   lineinfile:
     path: "{{ vault_home }}/.bashrc"
-    line: "export VAULT_ADDR='{{ vault_tls_disable | ternary('http', 'https') }}://{{ inventory_hostname }}:{{ vault_port }}'"
+    regexp: "^export VAULT_ADDR="
+    line: "export VAULT_ADDR='{{ vault_tls_disable | ternary('http', 'https') }}://{{ vault_addr }}:{{ vault_port }}'"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
     create: true
+    mode: 0600
   when:
     - ansible_os_family != 'Windows'
 
 - name: Insert CA cert export in dotfile
+  become: true
   lineinfile:
     path: "{{ vault_home }}/.bashrc"
+    regexp: "^export VAULT_CACERT="
     line: "export VAULT_CACERT={{ vault_tls_config_path }}/{{ vault_tls_ca_file }}"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
     create: true
+    mode: 0600
   when:
     - not vault_tls_disable | bool
     - ansible_os_family != 'Windows'
@@ -249,10 +318,9 @@
   # Attempt to help with long lines > 160 issues
   vars:
     vault_addr_protocol: "{{ vault_tls_disable | ternary('http', 'https') }}"
-    vault_addr: "{{ (vault_address == '0.0.0.0') | ternary('127.0.0.1', vault_address) }}"
   uri:
     validate_certs: "{{ validate_certs_during_api_reachable_check | bool }}"
-    url: "{{ vault_addr_protocol }}://{{ vault_addr }}:{{ vault_port }}/v1/sys/health"
+    url: "{{ vault_addr_protocol }}://{{ vault_hostname | default(vault_addr, true) }}:{{ vault_port }}/v1/sys/health"
     method: GET
     # 200 if initialized, unsealed, and active
     # 429 if unsealed and standby
@@ -261,7 +329,7 @@
     # 501 if not initialized
     # 503 if sealed
     # See: https://www.vaultproject.io/api/system/health.html
-    status_code: 200, 429, 473, 501, 503
+    status_code: 200, 429, 472, 473, 501, 503
     body_format: json
   register: check_result
   retries: 6
@@ -274,3 +342,5 @@
 - name: Vault status
   debug:
     msg: "Vault is {{ vault_http_status[check_result.status|string] }}"
+  tags:
+    - check_vault

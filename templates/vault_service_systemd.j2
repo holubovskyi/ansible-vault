@@ -1,20 +1,13 @@
-### BEGIN INIT INFO
-# Provides:          vault
-# Required-Start:    $local_fs $remote_fs
-# Required-Stop:     $local_fs $remote_fs
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Short-Description: Vault agent
-# Description:       Vault secret management tool
-### END INIT INFO
-
 [Unit]
 Description="HashiCorp Vault - A tool for managing secrets"
 Documentation=https://www.vaultproject.io/docs/
 Requires=network-online.target
 After=network-online.target
-ConditionFileNotEmpty={{ vault_main_config }}
-StartLimitInterval=60
+{% if vault_use_config_path %}
+ConditionPathExists={{ vault_config_path }}
+{% else %}
+ConditionFileExists={{ vault_main_config }}
+{% endif %}
 
 [Service]
 User={{ vault_user }}
@@ -33,14 +26,23 @@ NoNewPrivileges=yes
 {% if vault_gcs_copy_sa and vault_gcs_credentials_src_file is defined and vault_gcs_credentials_dst_file|length -%}
 Environment=GOOGLE_APPLICATION_CREDENTIALS={{ vault_gcs_credentials_dst_file }}
 {% endif -%}
-ExecStart={{ vault_bin_path }}/vault server -config={{ vault_main_config }} -log-level={{ vault_log_level | lower }}
+{% if vault_http_proxy -%}
+Environment=HTTP_PROXY={{ vault_http_proxy }}
+{% endif -%}
+{% if vault_https_proxy -%}
+Environment=HTTPS_PROXY={{ vault_https_proxy }}
+{% endif -%}
+{% if vault_no_proxy -%}
+Environment=NO_PROXY={{ vault_no_proxy }}
+{% endif -%}
+ExecStart=/bin/sh -c 'exec {{ vault_bin_path }}/vault server -config={{ vault_config_path if vault_use_config_path else vault_main_config }} -log-level={{ vault_log_level | lower }} {{ vault_exec_output }}'
 ExecReload=/bin/kill --signal HUP $MAINPID
 KillMode=process
 KillSignal=SIGINT
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
-StartLimitIntervalSec=60
+StartLimitInterval=60
 StartLimitBurst=3
 LimitNOFILE=524288
 LimitNPROC=524288

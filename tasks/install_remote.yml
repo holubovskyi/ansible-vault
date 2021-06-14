@@ -4,15 +4,15 @@
 
 - name: OS packages
   package:
-    name: "{{ item }}"
+    name: "{{ vault_os_packages }}"
     state: present
-  with_items: "{{ vault_os_packages }}"
   tags: installation
 
 - name: Ensure remote vault dir exists
   file:
     path: /tmp/vault
     state: directory
+    mode: 0750
 
 - name: Check Vault package checksum file
   stat:

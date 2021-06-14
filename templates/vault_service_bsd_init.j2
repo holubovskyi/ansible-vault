@@ -20,10 +20,19 @@ stop_cmd=vault_stop
 
 vault_start() {
     echo "Starting ${name}."
+    {% if vault_http_proxy -%}
+    export HTTP_PROXY={{ vault_http_proxy }}
+    {% endif -%}
+    {% if vault_https_proxy -%}
+    export HTTPS_PROXY={{ vault_https_proxy }}
+    {% endif -%}
+    {% if vault_no_proxy -%}
+    export NO_PROXY={{ vault_no_proxy }}
+    {% endif -%}
     for user in ${vault_users}; do
         mkdir /var/run/vault
         chown -R "{{ vault_user }}:{{ vault_group }}" /var/run/vault/
-        su -m "${user}" -c "{{ vault_bin_path }}/vault server -config={{ vault_main_config }} {% if vault_log_level is defined %}-log-level={{ vault_log_level | lower }}{% endif %}&"
+        su -m "${user}" -c "{{ vault_bin_path }}/vault server -config={{ vault_config_path if vault_use_config_path else vault_main_config }} {% if vault_log_level is defined %}-log-level={{ vault_log_level | lower }}{% endif %} {{ vault_exec_output }} &"
     done
 }
 
