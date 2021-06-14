@@ -151,8 +151,8 @@
     group: "{{ vault_group }}"
     mode: "0600"
   when:
-  - vault_backend == "gcs"
-  - vault_gcs_copy_sa | bool
+    - vault_backend == "gcs"
+    - vault_gcs_copy_sa | bool
 
 - name: Vault main configuration
   become: true
